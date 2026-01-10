@@ -1,0 +1,40 @@
+# Fly.io deployment configuration for OpenHands
+# See https://fly.io/docs/reference/configuration/ for information about this file.
+
+app = "openhands"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../containers/app/Dockerfile"
+
+[env]
+  PORT = "3000"
+  FILE_STORE = "local"
+  FILE_STORE_PATH = "/.openhands"
+  WORKSPACE_BASE = "/opt/workspace_base"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 100
+    soft_limit = 80
+
+[[vm]]
+  memory = "4gb"
+  cpu_kind = "shared"
+  cpus = 2
+
+[mounts]
+  source = "openhands_data"
+  destination = "/.openhands"
+
+# Note: You need to set secrets via fly secrets set:
+# fly secrets set LLM_API_KEY=your-api-key
+# fly secrets set JWT_SECRET=$(openssl rand -hex 32)
