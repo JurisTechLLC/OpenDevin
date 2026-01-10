@@ -1,0 +1,65 @@
+{
+  "buildCommand": "cd frontend && npm run make-i18n && npm run build",
+  "outputDirectory": "frontend/dist",
+  "installCommand": "cd frontend && npm install",
+  "framework": null,
+  "functions": {
+    "api/*.py": {
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/litellm-models",
+      "destination": "/api/litellm-models"
+    },
+    {
+      "source": "/api/agents",
+      "destination": "/api/agents"
+    },
+    {
+      "source": "/api/auth",
+      "destination": "/api/auth"
+    },
+    {
+      "source": "/api/messages",
+      "destination": "/api/messages"
+    },
+    {
+      "source": "/api/messages/total",
+      "destination": "/api/messages-total"
+    },
+    {
+      "source": "/api/chat",
+      "destination": "/api/chat"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, DELETE, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
+      ]
+    }
+  ]
+}
