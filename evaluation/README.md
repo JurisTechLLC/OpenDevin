@@ -1,79 +1,152 @@
 # Evaluation
 
+> [!WARNING]
+> **This directory is deprecated.** Our new benchmarks are located at [OpenHands/benchmarks](https://github.com/OpenHands/benchmarks).
+>
+> If you have already implemented a benchmark in this directory and would like to contribute it, we are happy to have the contribution. However, if you are starting anew, please use the new location.
+
 This folder contains code and resources to run experiments and evaluations.
 
-## Logistics
-To better organize the evaluation folder, we should follow the rules below:
-  - Each subfolder contains a specific benchmark or experiment. For example, `evaluation/SWE-bench` should contain
-all the preprocessing/evaluation/analysis scripts.
-  - Raw data and experimental records should not be stored within this repo (e.g. Google Drive or Hugging Face Datasets).
-  - Important data files of manageable size and analysis scripts (e.g., jupyter notebooks) can be directly uploaded to this repo.
+## For Benchmark Users
 
-## Roadmap
+### Setup
 
-- Sanity check. Reproduce Devin's scores on SWE-bench using the released outputs to make sure that our harness pipeline works.
-- Open source model support.
-  - Contributors are encouraged to submit their commits to our [forked SEW-bench repo](https://github.com/OpenDevin/SWE-bench).
-  - Ensure compatibility with OpenAI interface for inference.
-  - Serve open source models, prioritizing high concurrency and throughput.
+Before starting evaluation, follow the instructions [here](https://github.com/OpenHands/OpenHands/blob/main/Development.md) to setup your local development environment and LLM.
 
-## SWE-bench
-- notebooks
-  - `devin_eval_analysis.ipynb`: notebook analyzing devin's outputs
-- scripts
-  - `prepare_devin_outputs_for_evaluation.py`: script fetching and converting [devin's output](https://github.com/CognitionAI/devin-swebench-results/tree/main) into the desired json file for evaluation.
-    - usage: `python prepare_devin_outputs_for_evaluation.py <setting>` where setting can be `passed`, `failed` or `all`
-- resources
-  - Devin related SWE-bench test subsets
-    - [🤗 OpenDevin/SWE-bench-devin-passed](https://huggingface.co/datasets/OpenDevin/SWE-bench-devin-passed)
-    - [🤗 OpenDevin/SWE-bench-devin-full-filtered](https://huggingface.co/datasets/OpenDevin/SWE-bench-devin-full-filtered)
-  - Devin's outputs processed for evaluations is available on [Huggingface](https://huggingface.co/datasets/OpenDevin/Devin-SWE-bench-output)
-    - get predictions that passed the test: `wget https://huggingface.co/datasets/OpenDevin/Devin-SWE-bench-output/raw/main/devin_swe_passed.json`
-    - get all predictions `wget https://huggingface.co/datasets/OpenDevin/Devin-SWE-bench-output/raw/main/devin_swe_outputs.json`
+Once you are done with setup, you can follow the benchmark-specific instructions in each subdirectory of the [evaluation directory](#supported-benchmarks).
+Generally these will involve running `run_infer.py` to perform inference with the agents.
 
-See [`SWE-bench/README.md`](./SWE-bench/README.md) for more details on how to run SWE-Bench for evaluation.
+### Implementing and Evaluating an Agent
 
-### Results
+To add an agent to OpenHands, you will need to implement it in the [agenthub directory](https://github.com/OpenHands/OpenHands/tree/main/openhands/agenthub). There is a README there with more information.
 
-We have refined the original SWE-bench evaluation pipeline to enhance its efficiency and reliability. The updates are as follows:
-- Reuse testbeds and Conda environments.
-- Additionally try `patch` command for patch application if `git apply` command fails.
+To evaluate an agent, you can provide the agent's name to the `run_infer.py` program.
 
-#### Results on SWE-bench-devin-passed
+### Evaluating Different LLMs
 
-[🤗 OpenDevin/SWE-bench-devin-passed](https://huggingface.co/datasets/OpenDevin/SWE-bench-devin-passed)
+OpenHands in development mode uses `config.toml` to keep track of most configuration.
+**IMPORTANT: For evaluation, only the LLM section in `config.toml` will be used. Other configurations, such as `save_trajectory_path`, are not applied during evaluation.**
 
-| Model/Agent            | #instances | #init | #apply | #resolve |
-|------------------------|------------|-------|--------|----------|
-| Gold                   | 79         | 79    | 79     | 79       |
-| Devin                  | 79         | 79    | 76     | 76       |
+Here's an example configuration file you can use to define and use multiple LLMs:
 
-#init: number of instances where testbeds have been successfully initialized.
+```toml
+[llm]
+# IMPORTANT: add your API key here, and set the model to the one you want to evaluate
+model = "gpt-4o-2024-05-13"
+api_key = "sk-XXX"
 
-In the 3 Devin-failed instances (see below), Devin has made changes to the tests, which are incompatible with the provided test patch and causes failures during patch application. The evaluation adopted by Devin does not seem to align with the original SWE-bench evaluation.
+[llm.eval_gpt4_1106_preview_llm]
+model = "gpt-4-1106-preview"
+api_key = "XXX"
+temperature = 0.0
 
-```shell
-django__django-11244
-scikit-learn__scikit-learn-10870
-sphinx-doc__sphinx-9367
+[llm.eval_some_openai_compatible_model_llm]
+model = "openai/MODEL_NAME"
+base_url = "https://OPENAI_COMPATIBLE_URL/v1"
+api_key = "XXX"
+temperature = 0.0
 ```
 
-#### Results on SWE-bench-devin-failed
+### Configuring Condensers for Evaluation
 
-| Model/Agent            | #instances | #init | #apply | #resolve |
-|------------------------|------------|-------|--------|----------|
-| Gold                   | 491        | 491   | 491    | 371      |
-| Devin                  | 491        | 491   | 463    | 7        |
+For benchmarks that support condenser configuration (like SWE-Bench), you can define multiple condenser configurations in your `config.toml` file. A condenser is responsible for managing conversation history to maintain context while staying within token limits - you can learn more about how it works [here](https://www.openhands.dev/blog/openhands-context-condensensation-for-more-efficient-ai-agents):
 
-Devin **passes** 7 instances on the `SWE-bench-devin-failed` subset. SWE-bench dataset appears to be noisy, evidenced by 120 instances where gold patches do not pass.
+```toml
+# LLM-based summarizing condenser for evaluation
+[condenser.summarizer_for_eval]
+type = "llm"
+llm_config = "haiku"  # Reference to an LLM config to use for summarization
+keep_first = 2        # Number of initial events to always keep
+max_size = 100        # Maximum size of history before triggering summarization
 
-We have filtered out the problematic 120 instances, resulting in the creation of the `SWE-bench-devin-full-filtered` subset.
+# Recent events condenser for evaluation
+[condenser.recent_for_eval]
+type = "recent"
+keep_first = 2        # Number of initial events to always keep
+max_events = 50       # Maximum number of events to keep in history
+```
 
-## Results on SWE-bench-devin-full-filtered
+You can then specify which condenser configuration to use when running evaluation scripts, for example:
 
-[🤗 OpenDevin/SWE-bench-devin-full-filtered](https://huggingface.co/datasets/OpenDevin/SWE-bench-devin-full-filtered)
+```bash
+EVAL_CONDENSER=summarizer_for_eval \
+./evaluation/benchmarks/swe_bench/scripts/run_infer.sh llm.eval_gpt4_1106_preview HEAD CodeActAgent 500 100 1 princeton-nlp/SWE-bench_Verified test
+```
 
-| Model/Agent            | #instances | #init | #apply | #resolve |
-|------------------------|------------|-------|--------|----------|
-| Gold                   | 450        | 450   | 450    | 450      |
-| Devin                  | 450        | 450   | 426    | 83       |
+The name is up to you, but should match a name defined in your `config.toml` file. The last argument in the command specifies the condenser configuration to use. In this case, `summarizer_for_eval` is used, which refers to the LLM-based summarizing condenser as defined above.
+
+If no condenser configuration is specified, the 'noop' condenser will be used by default, which keeps the full conversation history.
+
+For other configurations specific to evaluation, such as `save_trajectory_path`, these are typically set in the `get_config` function of the respective `run_infer.py` file for each benchmark.
+
+### Enabling LLM-Based Editor Tools
+
+The LLM-Based Editor tool (currently supported only for SWE-Bench) can be enabled by setting:
+```bash
+export ENABLE_LLM_EDITOR=true
+```
+
+You can set the config for the Editor LLM as:
+```toml
+[llm.draft_editor]
+base_url = "http://localhost:9002/v1"
+model = "hosted_vllm/lite_coder_qwen_editor_3B"
+api_key = ""
+temperature = 0.7
+max_input_tokens = 10500
+max_output_tokens = 10500
+```
+
+## Supported Benchmarks
+
+The OpenHands evaluation harness supports a wide variety of benchmarks across [software engineering](#software-engineering), [web browsing](#web-browsing), [miscellaneous assistance](#misc-assistance), and [real-world](#real-world) tasks.
+
+### Software Engineering
+
+- SWE-Bench: [`evaluation/benchmarks/swe_bench`](./benchmarks/swe_bench)
+- HumanEvalFix: [`evaluation/benchmarks/humanevalfix`](./benchmarks/humanevalfix)
+- BIRD: [`evaluation/benchmarks/bird`](./benchmarks/bird)
+- BioCoder: [`evaluation/benchmarks/biocoder`](./benchmarks/biocoder)
+- ML-Bench: [`evaluation/benchmarks/ml_bench`](./benchmarks/ml_bench)
+- APIBench: [`evaluation/benchmarks/gorilla`](./benchmarks/gorilla/)
+- ToolQA: [`evaluation/benchmarks/toolqa`](./benchmarks/toolqa/)
+- AiderBench: [`evaluation/benchmarks/aider_bench`](./benchmarks/aider_bench/)
+- Commit0: [`evaluation/benchmarks/commit0_bench`](./benchmarks/commit0_bench/)
+- DiscoveryBench: [`evaluation/benchmarks/discoverybench`](./benchmarks/discoverybench/)
+- TerminalBench: [`evaluation/benchmarks/terminal_bench`](./benchmarks/terminal_bench)
+
+### Web Browsing
+
+- WebArena: [`evaluation/benchmarks/webarena`](./benchmarks/webarena/)
+- MiniWob++: [`evaluation/benchmarks/miniwob`](./benchmarks/miniwob/)
+- Browsing Delegation: [`evaluation/benchmarks/browsing_delegation`](./benchmarks/browsing_delegation/)
+
+### Misc. Assistance
+
+- GAIA: [`evaluation/benchmarks/gaia`](./benchmarks/gaia)
+- GPQA: [`evaluation/benchmarks/gpqa`](./benchmarks/gpqa)
+- AgentBench: [`evaluation/benchmarks/agent_bench`](./benchmarks/agent_bench)
+- MINT: [`evaluation/benchmarks/mint`](./benchmarks/mint)
+- Entity deduction Arena (EDA): [`evaluation/benchmarks/EDA`](./benchmarks/EDA)
+- ProofWriter: [`evaluation/benchmarks/logic_reasoning`](./benchmarks/logic_reasoning)
+- ScienceAgentBench: [`evaluation/benchmarks/scienceagentbench`](./benchmarks/scienceagentbench)
+
+### Real World
+
+- TheAgentCompany: [`evaluation/benchmarks/the_agent_company`](./benchmarks/the_agent_company)
+
+## Result Visualization
+
+Check [this huggingface space](https://huggingface.co/spaces/OpenHands/evaluation) for visualization of existing experimental results.
+
+You can start your own fork of [our huggingface evaluation outputs](https://huggingface.co/spaces/OpenHands/evaluation) and submit a PR of your evaluation results to our hosted huggingface repo via PR following the guide [here](https://huggingface.co/docs/hub/en/repositories-pull-requests-discussions#pull-requests-and-discussions).
+
+## For Benchmark Developers
+
+To learn more about how to integrate your benchmark into OpenHands, check out [tutorial here](https://docs.openhands.dev/usage/how-to/evaluation-harness). Briefly,
+
+- Each subfolder contains a specific benchmark or experiment. For example, [`evaluation/benchmarks/swe_bench`](./benchmarks/swe_bench) should contain
+all the preprocessing/evaluation/analysis scripts.
+- Raw data and experimental records should not be stored within this repo.
+- For model outputs, they should be stored at [this huggingface space](https://huggingface.co/spaces/OpenHands/evaluation) for visualization.
+- Important data files of manageable size and analysis scripts (e.g., jupyter notebooks) can be directly uploaded to this repo.
