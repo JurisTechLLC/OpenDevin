@@ -4,9 +4,31 @@
   "outputDirectory": "frontend/build",
   "installCommand": "cd frontend && npm install",
   "framework": null,
+  "functions": {
+    "api/**/*.ts": {
+      "memory": 256,
+      "maxDuration": 10
+    }
+  },
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/api/options/config",
+      "destination": "/api/options/config"
+    },
+    {
+      "source": "/api/options/models",
+      "destination": "/api/options/models"
+    },
+    {
+      "source": "/api/options/agents",
+      "destination": "/api/options/agents"
+    },
+    {
+      "source": "/api/options/security-analyzers",
+      "destination": "/api/options/security-analyzers"
+    },
+    {
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
