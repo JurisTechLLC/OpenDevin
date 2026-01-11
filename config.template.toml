@@ -547,11 +547,22 @@ type = "noop"
 ##############################################################################
 # Environment variables (set these in your environment, not in this file):
 #
-# DEVIN_API_KEY - Your Devin.ai API key (required for error reporting)
+# DEVIN_API_KEY - Your Devin.ai API key (required for direct Devin API reporting)
 #   Get your API key from: https://app.devin.ai/settings/api-keys
 #
 # DISABLE_DEVIN_AUTO_REVIEW - Set to "true" to disable automatic error reporting
 #   Useful for temporarily pausing the feature without removing API keys
+#
+# CHATUSERINTERFACE_ERROR_REPORTS_API_KEY - API key for centralized error reporting
+#   When set, errors are sent to the chatuserinterface API endpoint which handles:
+#   - PR merge cooldown (5 minutes after PR merge before allowing new sessions)
+#   - Historical context injection for recurring errors
+#   - Active session deduplication
+#   - Routing to Devin.ai for automatic fixes
+#   Get this key from your chatuserinterface deployment administrator
+#
+# CHATUSERINTERFACE_API_URL - Custom URL for the chatuserinterface API endpoint
+#   Default: https://ottomasion.ai/api/external-error-reports
 #
 # To enable the Devin monitoring listener, set the monitoring_listener_class
 # in your server configuration to:
