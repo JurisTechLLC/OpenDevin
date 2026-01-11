@@ -68,6 +68,30 @@ class ReportResult:
     devin_session_url: Optional[str] = None
     error: Optional[str] = None
     skipped_reason: Optional[str] = None
+    in_cooldown: bool = False
+    cooldown_ends_at: Optional[datetime] = None
+    has_historical_context: bool = False
+
+
+@dataclass
+class HistoricalAttempt:
+    """Record of a previous fix attempt for an error."""
+    session_id: str
+    session_url: str
+    pr_url: Optional[str]
+    status: str
+    created_at: datetime
+    resolved_at: Optional[datetime]
+    resolution_notes: Optional[str]
+
+
+@dataclass
+class ErrorHistory:
+    """Historical context for a recurring error."""
+    has_history: bool
+    previous_attempts: list[HistoricalAttempt] = field(default_factory=list)
+    total_occurrences: int = 0
+    first_seen: Optional[datetime] = None
 
 
 class DevinIntegrationService:
@@ -77,13 +101,24 @@ class DevinIntegrationService:
     - Automatic error sanitization to remove sensitive data
     - Rate limiting to prevent API abuse
     - Error deduplication to avoid duplicate reports
+    - PR merge cooldown (5 minutes after PR merge before allowing new sessions)
+    - Historical context injection for recurring errors
     - Environment variable toggle to disable the feature
     """
+    
+    # PR merge cooldown period in seconds (5 minutes)
+    PR_MERGE_COOLDOWN_SECONDS = 5 * 60
     
     def __init__(self):
         self._request_counts: dict[str, int] = {}
         self._last_request_reset: float = time.time()
         self._recent_error_hashes: dict[str, float] = {}  # hash -> timestamp
+        
+        # In-memory tracking for PR merge cooldown and historical context
+        # In production, this should be backed by a database
+        self._resolved_errors: dict[str, dict[str, Any]] = {}  # hash -> {resolved_at, pr_url, session_id}
+        self._error_history: dict[str, list[dict[str, Any]]] = {}  # hash -> list of attempts
+        self._active_sessions: dict[str, str] = {}  # hash -> session_id (for deduplication)
         
     def is_enabled(self) -> bool:
         """Check if Devin auto-review is enabled.
@@ -434,6 +469,328 @@ Please focus on creating a robust, production-ready fix."""
         except Exception as e:
             logger.error(f"[DevinIntegration] Error in sync wrapper: {e}")
             return ReportResult(success=False, error=str(e))
+
+    # ===== PR MERGE COOLDOWN AND HISTORICAL CONTEXT =====
+    
+    def _check_pr_merge_cooldown(self, error_hash: str) -> tuple[bool, Optional[datetime], Optional[str]]:
+        """Check if an error is in the PR merge cooldown period.
+        
+        Returns:
+            Tuple of (in_cooldown, cooldown_ends_at, merged_pr_url)
+        """
+        if error_hash not in self._resolved_errors:
+            return False, None, None
+        
+        resolved = self._resolved_errors[error_hash]
+        resolved_at = resolved.get("resolved_at")
+        
+        if resolved_at:
+            cooldown_ends_at = resolved_at + timedelta(seconds=self.PR_MERGE_COOLDOWN_SECONDS)
+            if datetime.now() < cooldown_ends_at:
+                logger.info(
+                    f"[DevinIntegration] Error {error_hash[:16]}... is in PR merge cooldown "
+                    f"until {cooldown_ends_at.isoformat()}"
+                )
+                return True, cooldown_ends_at, resolved.get("pr_url")
+        
+        return False, None, None
+    
+    def _check_active_session(self, error_hash: str) -> Optional[str]:
+        """Check if there's already an active session for this error.
+        
+        Returns:
+            Session ID if active session exists, None otherwise
+        """
+        return self._active_sessions.get(error_hash)
+    
+    def _get_historical_context(self, error_hash: str) -> ErrorHistory:
+        """Get historical context for a recurring error."""
+        if error_hash not in self._error_history:
+            return ErrorHistory(has_history=False)
+        
+        attempts = self._error_history[error_hash]
+        if not attempts:
+            return ErrorHistory(has_history=False)
+        
+        # Convert stored dicts to HistoricalAttempt objects
+        previous_attempts = [
+            HistoricalAttempt(
+                session_id=a.get("session_id", ""),
+                session_url=a.get("session_url", ""),
+                pr_url=a.get("pr_url"),
+                status=a.get("status", "unknown"),
+                created_at=a.get("created_at", datetime.now()),
+                resolved_at=a.get("resolved_at"),
+                resolution_notes=a.get("resolution_notes")
+            )
+            for a in attempts
+        ]
+        
+        # Calculate total occurrences
+        total_occurrences = sum(a.get("occurrence_count", 1) for a in attempts)
+        
+        # Find first seen date
+        first_seen = min(
+            (a.get("created_at") for a in attempts if a.get("created_at")),
+            default=None
+        )
+        
+        return ErrorHistory(
+            has_history=True,
+            previous_attempts=previous_attempts,
+            total_occurrences=total_occurrences,
+            first_seen=first_seen
+        )
+    
+    def _build_prompt_with_historical_context(
+        self,
+        error: SanitizedError,
+        history: ErrorHistory
+    ) -> str:
+        """Build a prompt with historical context for recurring errors."""
+        prompt = self._build_devin_prompt(error)
+        
+        # Add historical context section
+        prompt += f"\n\n## WARNING: RECURRING ERROR - HISTORICAL CONTEXT\n"
+        prompt += f"This error has occurred **{history.total_occurrences} times** "
+        if history.first_seen:
+            prompt += f"since {history.first_seen.strftime('%Y-%m-%d')}.\n\n"
+        else:
+            prompt += "previously.\n\n"
+        
+        if history.previous_attempts:
+            prompt += "### Previous Fix Attempts\n"
+            prompt += "The following Devin sessions have attempted to fix this error:\n\n"
+            
+            for attempt in history.previous_attempts[:5]:
+                prompt += f"**Session:** {attempt.session_url}\n"
+                prompt += f"- Status: {attempt.status}\n"
+                if attempt.pr_url:
+                    prompt += f"- PR: {attempt.pr_url}\n"
+                if attempt.resolved_at:
+                    prompt += f"- Resolved: {attempt.resolved_at.strftime('%Y-%m-%d')}\n"
+                if attempt.resolution_notes:
+                    prompt += f"- Notes: {attempt.resolution_notes}\n"
+                prompt += "\n"
+            
+            prompt += "### IMPORTANT INSTRUCTIONS\n"
+            prompt += "1. **Review the previous sessions** linked above to understand what was tried before\n"
+            prompt += "2. **Do NOT repeat the same approach** if it didn't work\n"
+            prompt += "3. **Try a different strategy** - the previous fix may have been incomplete\n"
+            prompt += "4. **Consider deeper investigation** - this recurring error may indicate a fundamental issue\n"
+            prompt += "5. **Document your approach** in the PR description so future sessions can learn from it\n"
+        
+        return prompt
+    
+    def _record_attempt(
+        self,
+        error_hash: str,
+        session_id: str,
+        session_url: str
+    ) -> None:
+        """Record a fix attempt for historical tracking."""
+        if error_hash not in self._error_history:
+            self._error_history[error_hash] = []
+        
+        self._error_history[error_hash].append({
+            "session_id": session_id,
+            "session_url": session_url,
+            "pr_url": None,
+            "status": "in_progress",
+            "created_at": datetime.now(),
+            "resolved_at": None,
+            "resolution_notes": None,
+            "occurrence_count": 1
+        })
+        
+        # Track active session
+        self._active_sessions[error_hash] = session_id
+    
+    async def report_error_with_cooldown_and_history(
+        self,
+        error: ErrorContext
+    ) -> ReportResult:
+        """Report an error with PR merge cooldown and historical context.
+        
+        This is the recommended method for production use. It includes:
+        - PR merge cooldown (5 minutes after PR merge before allowing new sessions)
+        - Historical context injection for recurring errors
+        - Active session deduplication
+        
+        Args:
+            error: The error context to report
+            
+        Returns:
+            ReportResult with success status and session details
+        """
+        # Check if feature is enabled
+        if not self.is_enabled():
+            return ReportResult(
+                success=False,
+                skipped_reason="Devin auto-review is disabled via DISABLE_DEVIN_AUTO_REVIEW"
+            )
+        
+        # Get API key
+        api_key = self._get_api_key()
+        if not api_key:
+            return ReportResult(
+                success=False,
+                error="No Devin API key configured"
+            )
+        
+        # Generate error hash
+        error_hash = self._generate_error_hash(error)
+        
+        # Check PR merge cooldown
+        in_cooldown, cooldown_ends_at, merged_pr_url = self._check_pr_merge_cooldown(error_hash)
+        if in_cooldown:
+            return ReportResult(
+                success=True,
+                skipped_reason=f"PR merge cooldown active until {cooldown_ends_at.isoformat() if cooldown_ends_at else 'unknown'}. "
+                              f"A fix was recently merged ({merged_pr_url or 'PR URL not available'}). "
+                              "Waiting for production deployment to complete.",
+                in_cooldown=True,
+                cooldown_ends_at=cooldown_ends_at
+            )
+        
+        # Check for active session
+        active_session_id = self._check_active_session(error_hash)
+        if active_session_id:
+            return ReportResult(
+                success=True,
+                devin_session_id=active_session_id,
+                devin_session_url=f"https://app.devin.ai/sessions/{active_session_id}",
+                skipped_reason=f"Active session {active_session_id} already working on this error"
+            )
+        
+        # Check for duplicates (basic deduplication)
+        if self._check_duplicate(error_hash):
+            return ReportResult(
+                success=False,
+                skipped_reason="Duplicate error within deduplication window"
+            )
+        
+        # Check rate limit
+        if not self._check_rate_limit():
+            return ReportResult(
+                success=False,
+                skipped_reason="Rate limit exceeded"
+            )
+        
+        # Get historical context
+        history = self._get_historical_context(error_hash)
+        
+        # Sanitize error
+        sanitized_error = self._sanitize_error(error)
+        
+        # Build prompt with or without historical context
+        if history.has_history and history.previous_attempts:
+            prompt = self._build_prompt_with_historical_context(sanitized_error, history)
+            logger.info(
+                f"[DevinIntegration] Building prompt with historical context "
+                f"({len(history.previous_attempts)} previous attempts)"
+            )
+        else:
+            prompt = self._build_devin_prompt(sanitized_error)
+        
+        logger.info(
+            f"[DevinIntegration] Reporting error to Devin: {error.message[:100]}..."
+        )
+        
+        # Call Devin API with the enhanced prompt
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    f"{DEVIN_API_BASE_URL}/sessions",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {api_key}"
+                    },
+                    json={
+                        "prompt": prompt,
+                        "repo": DEVIN_REPO
+                    }
+                )
+                
+                if response.status_code != 200:
+                    logger.error(
+                        f"[DevinIntegration] Devin API error: {response.status_code} - {response.text}"
+                    )
+                    return ReportResult(
+                        success=False,
+                        error=f"Devin API error: {response.status_code}"
+                    )
+                
+                data = response.json()
+                session_id = data.get("session_id", "")
+                session_url = data.get("url", f"https://app.devin.ai/sessions/{session_id}")
+                
+                # Record the attempt for historical tracking
+                self._record_attempt(error_hash, session_id, session_url)
+                
+                logger.info(
+                    f"[DevinIntegration] Devin review session created: {session_url}"
+                    + (" (with historical context)" if history.has_history else "")
+                )
+                
+                return ReportResult(
+                    success=True,
+                    devin_session_id=session_id,
+                    devin_session_url=session_url,
+                    has_historical_context=history.has_history and len(history.previous_attempts) > 0
+                )
+                
+        except Exception as e:
+            logger.error(f"[DevinIntegration] Failed to call Devin API: {e}")
+            return ReportResult(success=False, error=str(e))
+    
+    def mark_pr_merged(
+        self,
+        error_hash: str,
+        pr_url: str,
+        session_id: str,
+        notes: Optional[str] = None
+    ) -> None:
+        """Mark a PR as merged, starting the cooldown period.
+        
+        Args:
+            error_hash: Hash of the error that was fixed
+            pr_url: URL of the merged PR
+            session_id: Devin session ID that created the PR
+            notes: Optional resolution notes
+        """
+        # Record the resolution
+        self._resolved_errors[error_hash] = {
+            "resolved_at": datetime.now(),
+            "pr_url": pr_url,
+            "session_id": session_id,
+            "notes": notes
+        }
+        
+        # Update historical record
+        if error_hash in self._error_history:
+            for attempt in self._error_history[error_hash]:
+                if attempt.get("session_id") == session_id:
+                    attempt["status"] = "resolved"
+                    attempt["resolved_at"] = datetime.now()
+                    attempt["pr_url"] = pr_url
+                    attempt["resolution_notes"] = notes
+                    break
+        
+        # Remove from active sessions
+        if error_hash in self._active_sessions:
+            del self._active_sessions[error_hash]
+        
+        logger.info(
+            f"[DevinIntegration] Marked error {error_hash[:16]}... as resolved (PR merged). "
+            f"Cooldown period of {self.PR_MERGE_COOLDOWN_SECONDS // 60} minutes started."
+        )
+    
+    def clear_active_session(self, error_hash: str) -> None:
+        """Clear an active session (e.g., if it failed or was cancelled)."""
+        if error_hash in self._active_sessions:
+            del self._active_sessions[error_hash]
+            logger.info(f"[DevinIntegration] Cleared active session for error {error_hash[:16]}...")
 
 
 # Global singleton instance
