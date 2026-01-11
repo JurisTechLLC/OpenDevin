@@ -540,3 +540,19 @@ type = "noop"
 # - "noop_router" (default): No routing, always uses primary LLM
 # - "multimodal_router": A router that switches between primary and secondary models, depending on whether the input is multimodal or not
 #router_name = "noop_router"
+
+#################################### Devin Integration ########################
+# Configuration for Devin.ai automatic error reporting and repair
+# When enabled, runtime errors are automatically reported to Devin for review
+##############################################################################
+# Environment variables (set these in your environment, not in this file):
+#
+# DEVIN_API_KEY - Your Devin.ai API key (required for error reporting)
+#   Get your API key from: https://app.devin.ai/settings/api-keys
+#
+# DISABLE_DEVIN_AUTO_REVIEW - Set to "true" to disable automatic error reporting
+#   Useful for temporarily pausing the feature without removing API keys
+#
+# To enable the Devin monitoring listener, set the monitoring_listener_class
+# in your server configuration to:
+#   openhands.integrations.devin_monitoring_listener.DevinMonitoringListener
