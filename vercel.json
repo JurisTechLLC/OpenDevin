@@ -28,6 +28,22 @@
       "destination": "/api/options/security-analyzers"
     },
     {
+      "source": "/api/authenticate",
+      "destination": "/api/authenticate"
+    },
+    {
+      "source": "/api/logout",
+      "destination": "/api/logout"
+    },
+    {
+      "source": "/api/github/callback",
+      "destination": "/api/github/callback"
+    },
+    {
+      "source": "/api/auth/realms/allhands/protocol/openid-connect/auth",
+      "destination": "/api/auth/realms/allhands/protocol/openid-connect/auth"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
