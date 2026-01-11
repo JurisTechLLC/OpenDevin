@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # Nginx reverse proxy for SSL termination
+  nginx:
+    image: nginx:alpine
+    container_name: openhands-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/certbot:/var/www/certbot:ro
+    depends_on:
+      - openhands
+    networks:
+      - openhands-network
+
+  # Main OpenHands application
+  openhands:
+    build:
+      context: ../../
+      dockerfile: ./containers/app/Dockerfile
+    image: openhands:latest
+    container_name: openhands-app
+    restart: unless-stopped
+    environment:
+      # Core configuration
+      - SANDBOX_RUNTIME_CONTAINER_IMAGE=${SANDBOX_RUNTIME_CONTAINER_IMAGE:-docker.openhands.dev/openhands/runtime:1.1-nikolaik}
+      - WORKSPACE_MOUNT_PATH=${WORKSPACE_BASE:-/opt/openhands/workspace}
+      - SANDBOX_USER_ID=${SANDBOX_USER_ID:-0}
+      
+      # Authentication
+      - JWT_SECRET=${JWT_SECRET}
+      - GITHUB_APP_CLIENT_ID=${GITHUB_APP_CLIENT_ID}
+      - GITHUB_APP_CLIENT_SECRET=${GITHUB_APP_CLIENT_SECRET}
+      
+      # LLM Configuration (users configure their own API keys in the UI)
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      
+      # Application mode
+      - APP_MODE=${APP_MODE:-saas}
+      
+      # File store
+      - FILE_STORE=local
+      - FILE_STORE_PATH=/.openhands
+    volumes:
+      # Docker socket for sandbox containers
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Persistent storage
+      - openhands-data:/.openhands
+      - ${WORKSPACE_BASE:-./workspace}:/opt/workspace_base
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - openhands-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/options/config"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Watchtower for automatic updates (optional)
+  watchtower:
+    image: containrrr/watchtower
+    container_name: openhands-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=86400  # Check for updates daily
+      - WATCHTOWER_INCLUDE_STOPPED=false
+    command: openhands-app openhands-nginx
+    profiles:
+      - auto-update
+
+networks:
+  openhands-network:
+    driver: bridge
+
+volumes:
+  openhands-data:
+    driver: local

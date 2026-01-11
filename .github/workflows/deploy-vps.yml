@@ -1,0 +1,153 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'openhands/**'
+      - 'frontend/**'
+      - 'containers/**'
+      - 'deploy/vps/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  DOCKER_IMAGE: ghcr.io/${{ github.repository_owner }}/openhands
+
+jobs:
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=sha,prefix=
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./containers/app/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            OPENHANDS_BUILD_VERSION=${{ github.sha }}
+
+  deploy:
+    name: Deploy to VPS
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            cd /opt/openhands/OpenDevin/deploy/vps
+            
+            # Pull latest changes
+            git pull origin main
+            
+            # Update the Docker image tag in docker-compose
+            export DOCKER_IMAGE=${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+            
+            # Deploy using docker compose
+            docker compose -f docker-compose.prod.yml pull || true
+            docker compose -f docker-compose.prod.yml up -d --build
+            
+            # Clean up old images
+            docker image prune -f
+            
+            # Health check
+            sleep 30
+            curl -f http://localhost:3000/api/options/config || exit 1
+            
+            echo "Deployment successful!"
+
+      - name: Notify on success
+        if: success()
+        run: |
+          echo "Deployment to VPS completed successfully!"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Deployment to VPS failed!"
+          echo "Please check the logs for more details."
+          exit 1
+
+  # Optional: Run health checks after deployment
+  health-check:
+    name: Post-Deployment Health Check
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: success()
+    
+    steps:
+      - name: Wait for deployment to stabilize
+        run: sleep 60
+
+      - name: Check application health
+        run: |
+          # Replace with your actual domain
+          HEALTH_URL="${{ secrets.VPS_HEALTH_URL || 'http://${{ secrets.VPS_HOST }}:80' }}"
+          
+          echo "Checking health at: $HEALTH_URL"
+          
+          # Check if the application is responding
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL/api/options/config" || echo "000")
+          
+          if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "304" ]; then
+            echo "Health check passed! Status: $HTTP_STATUS"
+          else
+            echo "Health check failed! Status: $HTTP_STATUS"
+            exit 1
+          fi
