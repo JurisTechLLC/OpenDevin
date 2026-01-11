@@ -1,0 +1,12 @@
+{
+  "name": "openhands-vercel-api",
+  "version": "1.0.0",
+  "description": "Vercel serverless functions for OpenHands",
+  "private": true,
+  "dependencies": {
+    "jose": "^5.2.0"
+  },
+  "devDependencies": {
+    "@vercel/node": "^3.0.0"
+  }
+}
