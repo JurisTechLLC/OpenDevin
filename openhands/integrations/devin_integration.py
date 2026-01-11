@@ -23,6 +23,13 @@ from openhands.core.logger import openhands_logger as logger
 DEVIN_API_BASE_URL = "https://api.devin.ai/v1"
 DEVIN_REPO = "JurisTechLLC/OpenDevin"
 
+# ChatUserInterface API configuration for external error reporting
+# This allows OpenHands to submit errors to the centralized error tracking system
+CHATUSERINTERFACE_API_URL = os.getenv(
+    "CHATUSERINTERFACE_API_URL",
+    "https://ottomasion.ai/api/external-error-reports"
+)
+
 # Rate limiting configuration
 MAX_REQUESTS_PER_HOUR = 10
 DEDUPLICATION_WINDOW_SECONDS = 3600  # 1 hour
@@ -791,6 +798,182 @@ Please focus on creating a robust, production-ready fix."""
         if error_hash in self._active_sessions:
             del self._active_sessions[error_hash]
             logger.info(f"[DevinIntegration] Cleared active session for error {error_hash[:16]}...")
+
+    # ===== CHATUSERINTERFACE API INTEGRATION =====
+    
+    def _get_external_api_key(self) -> Optional[str]:
+        """Get the API key for the chatuserinterface external error reports endpoint."""
+        api_key = os.getenv("CHATUSERINTERFACE_ERROR_REPORTS_API_KEY")
+        if not api_key:
+            logger.warning(
+                "[DevinIntegration] No chatuserinterface API key found. "
+                "Set CHATUSERINTERFACE_ERROR_REPORTS_API_KEY environment variable to enable "
+                "centralized error reporting."
+            )
+        return api_key
+    
+    async def report_error_to_chatuserinterface(
+        self,
+        error: ErrorContext,
+        repository: Optional[str] = None
+    ) -> ReportResult:
+        """Report an error to the chatuserinterface centralized error tracking system.
+        
+        This method sends errors to the chatuserinterface API endpoint, which handles:
+        - PR merge cooldown (5 minutes after PR merge before allowing new sessions)
+        - Historical context injection for recurring errors
+        - Active session deduplication
+        - Routing to Devin.ai for automatic fixes
+        
+        This is the recommended method for production use when you want centralized
+        error tracking across multiple services.
+        
+        Args:
+            error: The error context to report
+            repository: Optional repository name (defaults to DEVIN_REPO)
+            
+        Returns:
+            ReportResult with success status and session details
+        """
+        # Check if feature is enabled
+        if not self.is_enabled():
+            return ReportResult(
+                success=False,
+                skipped_reason="Devin auto-review is disabled via DISABLE_DEVIN_AUTO_REVIEW"
+            )
+        
+        # Get API key for chatuserinterface
+        api_key = self._get_external_api_key()
+        if not api_key:
+            # Fall back to direct Devin API if no chatuserinterface key
+            logger.info(
+                "[DevinIntegration] No chatuserinterface API key, falling back to direct Devin API"
+            )
+            return await self.report_error_with_cooldown_and_history(error)
+        
+        # Check rate limit
+        if not self._check_rate_limit():
+            return ReportResult(
+                success=False,
+                skipped_reason="Rate limit exceeded"
+            )
+        
+        # Sanitize error
+        sanitized_error = self._sanitize_error(error)
+        
+        logger.info(
+            f"[DevinIntegration] Reporting error to chatuserinterface: {error.message[:100]}..."
+        )
+        
+        # Build payload for chatuserinterface API
+        payload = {
+            "source": "openhands",
+            "category": sanitized_error.category,
+            "message": sanitized_error.message,
+            "stackTrace": sanitized_error.stack_trace,
+            "codeLocation": sanitized_error.code_location,
+            "severity": error.severity,
+            "context": sanitized_error.context or {},
+            "repository": repository or DEVIN_REPO
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    CHATUSERINTERFACE_API_URL,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {api_key}"
+                    },
+                    json=payload
+                )
+                
+                if response.status_code == 401:
+                    logger.error(
+                        "[DevinIntegration] Unauthorized - invalid API key for chatuserinterface"
+                    )
+                    return ReportResult(
+                        success=False,
+                        error="Unauthorized - invalid API key"
+                    )
+                
+                if response.status_code == 429:
+                    logger.warning(
+                        "[DevinIntegration] Rate limit exceeded on chatuserinterface API"
+                    )
+                    return ReportResult(
+                        success=False,
+                        skipped_reason="Rate limit exceeded on chatuserinterface API"
+                    )
+                
+                if response.status_code != 200:
+                    logger.error(
+                        f"[DevinIntegration] chatuserinterface API error: "
+                        f"{response.status_code} - {response.text}"
+                    )
+                    return ReportResult(
+                        success=False,
+                        error=f"API error: {response.status_code}"
+                    )
+                
+                data = response.json()
+                
+                if data.get("success"):
+                    logger.info(
+                        f"[DevinIntegration] Error reported to chatuserinterface: "
+                        f"notification={data.get('notificationId')}, "
+                        f"session={data.get('devinSessionUrl')}"
+                    )
+                    return ReportResult(
+                        success=True,
+                        notification_id=data.get("notificationId"),
+                        devin_session_id=data.get("devinSessionId"),
+                        devin_session_url=data.get("devinSessionUrl"),
+                        in_cooldown=data.get("action") == "cooldown",
+                        has_historical_context=data.get("action") == "historical_context"
+                    )
+                else:
+                    return ReportResult(
+                        success=False,
+                        error=data.get("error"),
+                        skipped_reason=data.get("message")
+                    )
+                    
+        except httpx.TimeoutException:
+            logger.error("[DevinIntegration] Timeout calling chatuserinterface API")
+            return ReportResult(success=False, error="Request timeout")
+        except Exception as e:
+            logger.error(f"[DevinIntegration] Failed to call chatuserinterface API: {e}")
+            return ReportResult(success=False, error=str(e))
+    
+    def report_error_to_chatuserinterface_sync(
+        self,
+        error: ErrorContext,
+        repository: Optional[str] = None
+    ) -> ReportResult:
+        """Synchronous wrapper for report_error_to_chatuserinterface.
+        
+        Use this when you need to report an error from synchronous code.
+        """
+        import asyncio
+        
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        asyncio.run,
+                        self.report_error_to_chatuserinterface(error, repository)
+                    )
+                    return future.result(timeout=60)
+            else:
+                return loop.run_until_complete(
+                    self.report_error_to_chatuserinterface(error, repository)
+                )
+        except Exception as e:
+            logger.error(f"[DevinIntegration] Error in sync wrapper: {e}")
+            return ReportResult(success=False, error=str(e))
 
 
 # Global singleton instance
