@@ -18,6 +18,15 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Get the host to construct the AUTH_URL dynamically
+  const host = req.headers.host || 'localhost:3000';
+  const protocol = host.includes('localhost') ? 'http' : 'https';
+  
+  // If AUTH_URL is not explicitly set, use our custom auth endpoint
+  // The frontend's generateAuthUrl expects a Keycloak-style URL, so we provide
+  // a custom endpoint that mimics the Keycloak auth path structure
+  const authUrl = process.env.AUTH_URL || `${protocol}://${host}/api/auth`;
+
   // Build the config response from environment variables
   const config = {
     APP_MODE: process.env.APP_MODE || 'saas',
@@ -25,7 +34,7 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
     GITHUB_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID || '',
     POSTHOG_CLIENT_KEY: process.env.POSTHOG_CLIENT_KEY || 'phc_3ESMmY9SgqEAGBB6sMGK5ayYHkeUuknH2vP6FmWH9RA',
     PROVIDERS_CONFIGURED: process.env.GITHUB_APP_CLIENT_ID ? ['github'] : [],
-    AUTH_URL: process.env.AUTH_URL || undefined,
+    AUTH_URL: authUrl,
     RECAPTCHA_SITE_KEY: process.env.RECAPTCHA_SITE_KEY || undefined,
     FEATURE_FLAGS: {
       ENABLE_BILLING: process.env.ENABLE_BILLING === 'true',
