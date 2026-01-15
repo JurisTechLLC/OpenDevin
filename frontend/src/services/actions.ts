@@ -78,6 +78,19 @@ export function handleStatusMessage(message: StatusMessage) {
 }
 
 export function handleAssistantMessage(message: Record<string, unknown>) {
+  // Diagnostic logging: log message type detection
+  let messageType = "unknown";
+  if (message.action) messageType = "action";
+  else if (message.observation) messageType = "observation";
+  else if (message.status_update) messageType = "status_update";
+  else if (message.error) messageType = "error";
+  else if ("id" in message && "source" in message) messageType = "valid_event";
+
+  // eslint-disable-next-line no-console
+  console.log(
+    `[DIAGNOSTIC] handleAssistantMessage type: ${messageType}, keys: ${Object.keys(message).join(", ")}`,
+  );
+
   if (message.action) {
     handleActionMessage(message as unknown as ActionMessage);
   } else if (message.observation) {
@@ -85,6 +98,8 @@ export function handleAssistantMessage(message: Record<string, unknown>) {
   } else if (message.status_update) {
     handleStatusMessage(message as unknown as StatusMessage);
   } else if (message.error) {
+    // eslint-disable-next-line no-console
+    console.log("[DIAGNOSTIC] Received error message from backend:", message);
     trackError({
       message: (message.message as string) || "Unknown error",
       source: "websocket",
@@ -94,6 +109,11 @@ export function handleAssistantMessage(message: Record<string, unknown>) {
   } else if (!("id" in message && "source" in message)) {
     // Only track as error if it's not a valid OpenHands event structure
     // (valid events are handled by the event store directly)
+    // eslint-disable-next-line no-console
+    console.log(
+      "[DIAGNOSTIC] Unknown message type - not a valid event:",
+      message,
+    );
     trackError({
       message: "Unknown message type received",
       source: "websocket",
