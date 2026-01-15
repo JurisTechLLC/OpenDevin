@@ -45,6 +45,10 @@ services:
       # Application mode
       - APP_MODE=${APP_MODE:-saas}
       
+      # Disable V1 API to use legacy Socket.IO WebSocket connections
+      # This is required for VPS deployments where sandbox ports are not directly accessible
+      - ENABLE_V1=0
+      
       # File store
       - FILE_STORE=local
       - FILE_STORE_PATH=/.openhands
