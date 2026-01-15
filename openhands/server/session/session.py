@@ -361,7 +361,12 @@ class WebSession:
             await self.send(event_dict)
 
     async def dispatch(self, data: dict) -> None:
-        event = event_from_dict(data.copy())
+        try:
+            event = event_from_dict(data.copy())
+        except ValueError as e:
+            self.logger.warning(f'Unknown message type received: {e}')
+            await self.send_error(f'Unknown message type received: {e}')
+            return
         # This checks if the model supports images
         if isinstance(event, MessageAction) and event.image_urls:
             controller = self.agent_session.controller

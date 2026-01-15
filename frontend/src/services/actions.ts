@@ -84,5 +84,21 @@ export function handleAssistantMessage(message: Record<string, unknown>) {
     handleObservationMessage(message as unknown as ObservationMessage);
   } else if (message.status_update) {
     handleStatusMessage(message as unknown as StatusMessage);
+  } else if (message.error) {
+    trackError({
+      message: (message.message as string) || "Unknown error",
+      source: "websocket",
+      metadata: { msgId: message.id as string },
+      posthog: undefined,
+    });
+  } else if (!("id" in message && "source" in message)) {
+    // Only track as error if it's not a valid OpenHands event structure
+    // (valid events are handled by the event store directly)
+    trackError({
+      message: "Unknown message type received",
+      source: "websocket",
+      metadata: { message: JSON.stringify(message) },
+      posthog: undefined,
+    });
   }
 }
