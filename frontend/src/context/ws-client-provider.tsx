@@ -186,6 +186,12 @@ export function WsClientProvider({
   }
 
   function handleMessage(event: Record<string, unknown>) {
+    // Diagnostic logging: log all received WebSocket messages
+    // eslint-disable-next-line no-console
+    console.log(
+      "[DIAGNOSTIC] WebSocket oh_event received:",
+      JSON.stringify(event, null, 2),
+    );
     handleAssistantMessage(event);
 
     if (isOpenHandsEvent(event)) {

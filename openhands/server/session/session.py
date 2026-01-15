@@ -361,11 +361,30 @@ class WebSession:
             await self.send(event_dict)
 
     async def dispatch(self, data: dict) -> None:
+        # Diagnostic logging: log all incoming messages
+        self.logger.info(
+            f'[DIAGNOSTIC] dispatch() received data: {data}',
+            extra={'signal': 'dispatch_received'},
+        )
         try:
             event = event_from_dict(data.copy())
+            self.logger.info(
+                f'[DIAGNOSTIC] dispatch() parsed event type: {type(event).__name__}',
+                extra={'signal': 'dispatch_parsed'},
+            )
         except ValueError as e:
-            self.logger.warning(f'Unknown message type received: {e}')
+            self.logger.warning(
+                f'[DIAGNOSTIC] dispatch() ValueError: {e}, data was: {data}',
+                extra={'signal': 'dispatch_error'},
+            )
             await self.send_error(f'Unknown message type received: {e}')
+            return
+        except Exception as e:
+            self.logger.error(
+                f'[DIAGNOSTIC] dispatch() unexpected error: {type(e).__name__}: {e}, data was: {data}',
+                extra={'signal': 'dispatch_unexpected_error'},
+            )
+            await self.send_error(f'Error processing message: {type(e).__name__}: {e}')
             return
         # This checks if the model supports images
         if isinstance(event, MessageAction) and event.image_urls:
@@ -384,6 +403,11 @@ class WebSession:
         self.agent_session.event_stream.add_event(event, EventSource.USER)
 
     async def send(self, data: dict[str, object]) -> None:
+        # Diagnostic logging: log all outgoing messages
+        self.logger.info(
+            f'[DIAGNOSTIC] send() queuing data: {data}',
+            extra={'signal': 'send_queued'},
+        )
         self._publish_queue.put_nowait(data)
 
     async def _monitor_publish_queue(self):
