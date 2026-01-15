@@ -171,6 +171,41 @@ free -h
 docker stats
 ```
 
+## Password Protection (Basic Authentication)
+
+The nginx configuration includes basic HTTP authentication to protect the application. To set up password protection:
+
+### 1. Create the .htpasswd file
+
+```bash
+# Install apache2-utils if not already installed
+sudo apt-get install apache2-utils
+
+# Create the .htpasswd file with a user
+sudo htpasswd -c /etc/nginx/.htpasswd admin
+
+# You'll be prompted to enter and confirm a password
+```
+
+### 2. Add additional users (optional)
+
+```bash
+# Add more users (without -c flag to avoid overwriting)
+sudo htpasswd /etc/nginx/.htpasswd another_user
+```
+
+### 3. Verify the file was created
+
+```bash
+cat /etc/nginx/.htpasswd
+```
+
+### 4. Restart nginx to apply changes
+
+```bash
+docker compose -f docker-compose.prod.yml restart nginx
+```
+
 ## Security Considerations
 
 1. Always use HTTPS in production
@@ -178,6 +213,7 @@ docker stats
 3. Regularly update the system and Docker images
 4. Consider setting up a firewall (ufw) to restrict access
 5. Use strong, unique values for `JWT_SECRET`
+6. Use strong passwords for basic authentication
 
 ## Support
 
