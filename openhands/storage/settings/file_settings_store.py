@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 
 from openhands.core.config.openhands_config import OpenHandsConfig
@@ -22,9 +23,10 @@ class FileSettingsStore(SettingsStore):
             kwargs = json.loads(json_str)
             settings = Settings(**kwargs)
 
-            # Turn on V1 in OpenHands
-            # We can simplify / remove this as part of V0 removal
-            settings.v1_enabled = True
+            # Set V1 based on ENABLE_V1 environment variable
+            # When ENABLE_V1=0, use V0 API (legacy Socket.IO WebSocket connections)
+            # This is required for VPS deployments where sandbox ports are not directly accessible
+            settings.v1_enabled = os.getenv('ENABLE_V1') != '0'
 
             return settings
         except FileNotFoundError:
