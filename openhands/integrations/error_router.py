@@ -18,7 +18,6 @@ This is a Python port of the ErrorRouterService from chatuserinterface,
 adapted for OpenHands' architecture.
 """
 
-import os
 from dataclasses import dataclass
 from typing import Any, Literal, Optional
 

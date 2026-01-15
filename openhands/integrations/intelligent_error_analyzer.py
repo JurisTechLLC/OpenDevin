@@ -17,6 +17,7 @@ This is a Python port of the IntelligentErrorAnalyzerService from chatuserinterf
 adapted for OpenHands' architecture.
 """
 
+import asyncio
 import json
 import os
 import re
@@ -447,9 +448,6 @@ Analyze the error's root cause and determine if it's already being addressed by 
         logger.info(f"[IntelligentErrorAnalyzer] Root cause: {analysis.root_cause}")
         return True, analysis
 
-
-# Import asyncio for gather
-import asyncio
 
 # Global singleton instance
 intelligent_error_analyzer = IntelligentErrorAnalyzerService()
