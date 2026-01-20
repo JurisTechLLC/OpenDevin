@@ -25,7 +25,6 @@ from openhands.core.logger import openhands_logger as logger
 from openhands.integrations.devin_integration import (
     DevinIntegrationService,
     ErrorContext,
-    ReportResult,
     devin_integration,
 )
 from openhands.integrations.intelligent_error_analyzer import (
@@ -36,7 +35,7 @@ from openhands.integrations.intelligent_error_analyzer import (
 )
 
 # Error router type - for OpenHands, only 'devin' is supported
-ErrorRouter = Literal["devin"]
+ErrorRouter = Literal['devin']
 
 
 @dataclass
@@ -49,7 +48,7 @@ class ErrorReport:
     stack_trace: Optional[str] = None
     code_location: Optional[str] = None
     context: Optional[dict[str, Any]] = None
-    severity: str = "ERROR"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    severity: str = 'ERROR'  # DEBUG, INFO, WARNING, ERROR, CRITICAL
     source_repo: Optional[str] = None
 
 
@@ -58,7 +57,7 @@ class RoutingResult:
     """Result of routing an error."""
 
     success: bool
-    router: str = "devin"
+    router: str = 'devin'
     notification_id: Optional[str] = None
     devin_session_id: Optional[str] = None
     devin_session_url: Optional[str] = None
@@ -76,18 +75,18 @@ class ErrorRouterConfig:
     # Enable/disable Devin integration
     enable_devin: bool = True
     # Minimum severity to report
-    min_severity: str = "ERROR"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    min_severity: str = 'ERROR'  # DEBUG, INFO, WARNING, ERROR, CRITICAL
     # Enable AI-based analysis
     enable_ai_analysis: bool = True
 
 
 # Severity levels for comparison
 SEVERITY_LEVELS: dict[str, int] = {
-    "DEBUG": 0,
-    "INFO": 1,
-    "WARNING": 2,
-    "ERROR": 3,
-    "CRITICAL": 4,
+    'DEBUG': 0,
+    'INFO': 1,
+    'WARNING': 2,
+    'ERROR': 3,
+    'CRITICAL': 4,
 }
 
 
@@ -125,9 +124,9 @@ class ErrorRouterService:
 
     def _meets_min_severity(self, severity: str) -> bool:
         """Check if error severity meets minimum threshold."""
-        error_level = SEVERITY_LEVELS.get(severity.upper(), SEVERITY_LEVELS["ERROR"])
+        error_level = SEVERITY_LEVELS.get(severity.upper(), SEVERITY_LEVELS['ERROR'])
         min_level = SEVERITY_LEVELS.get(
-            self._config.min_severity.upper(), SEVERITY_LEVELS["ERROR"]
+            self._config.min_severity.upper(), SEVERITY_LEVELS['ERROR']
         )
         return error_level >= min_level
 
@@ -147,23 +146,23 @@ class ErrorRouterService:
             RoutingResult with success status and session details
         """
         # Check severity threshold
-        severity = error.severity or "ERROR"
+        severity = error.severity or 'ERROR'
         if not self._meets_min_severity(severity):
             logger.info(
-                f"[ErrorRouter] Skipping error with severity {severity} "
-                f"(below threshold {self._config.min_severity})"
+                f'[ErrorRouter] Skipping error with severity {severity} '
+                f'(below threshold {self._config.min_severity})'
             )
             return RoutingResult(
                 success=False,
-                error=f"Severity {severity} below threshold {self._config.min_severity}",
+                error=f'Severity {severity} below threshold {self._config.min_severity}',
             )
 
         # Check if Devin is enabled
         if not self._config.enable_devin:
-            logger.info("[ErrorRouter] Devin is disabled, skipping")
+            logger.info('[ErrorRouter] Devin is disabled, skipping')
             return RoutingResult(
                 success=False,
-                error="Devin integration is disabled",
+                error='Devin integration is disabled',
             )
 
         # Use intelligent AI-based analysis if enabled
@@ -193,34 +192,34 @@ class ErrorRouterService:
 
                 if not should_send:
                     logger.info(
-                        f"[ErrorRouter] AI determined error is duplicate of active work: "
-                        f"{analysis.matching_active_work.title if analysis.matching_active_work else 'Unknown'}"
+                        f'[ErrorRouter] AI determined error is duplicate of active work: '
+                        f'{analysis.matching_active_work.title if analysis.matching_active_work else "Unknown"}'
                     )
-                    logger.info(f"[ErrorRouter] Reasoning: {analysis.reasoning}")
+                    logger.info(f'[ErrorRouter] Reasoning: {analysis.reasoning}')
                     return RoutingResult(
                         success=False,
                         linked_to_existing=True,
-                        error=f"Duplicate of active work: "
-                        f"{analysis.matching_active_work.title if analysis.matching_active_work else 'Active work item'}. "
-                        f"Reasoning: {analysis.reasoning}",
+                        error=f'Duplicate of active work: '
+                        f'{analysis.matching_active_work.title if analysis.matching_active_work else "Active work item"}. '
+                        f'Reasoning: {analysis.reasoning}',
                         ai_analysis=analysis,
                     )
 
                 logger.info(
-                    f"[ErrorRouter] AI determined error should be sent for repair. "
-                    f"Root cause: {analysis.root_cause}"
+                    f'[ErrorRouter] AI determined error should be sent for repair. '
+                    f'Root cause: {analysis.root_cause}'
                 )
 
                 # Add AI analysis to context for the repair service
                 enriched_context = {
                     **(error.context or {}),
-                    "ai_analysis": {
-                        "root_cause": analysis.root_cause,
-                        "category": analysis.category,
-                        "severity": analysis.severity,
-                        "affected_components": analysis.affected_components,
-                        "suggested_action": analysis.suggested_action,
-                        "confidence": analysis.confidence,
+                    'ai_analysis': {
+                        'root_cause': analysis.root_cause,
+                        'category': analysis.category,
+                        'severity': analysis.severity,
+                        'affected_components': analysis.affected_components,
+                        'suggested_action': analysis.suggested_action,
+                        'confidence': analysis.confidence,
                     },
                 }
 
@@ -241,7 +240,7 @@ class ErrorRouterService:
 
             except Exception as ai_error:
                 logger.error(
-                    f"[ErrorRouter] AI analysis failed, falling back to default routing: {ai_error}"
+                    f'[ErrorRouter] AI analysis failed, falling back to default routing: {ai_error}'
                 )
                 # Fall through to default routing if AI fails
 
@@ -291,7 +290,7 @@ class ErrorRouterService:
             )
 
         except Exception as e:
-            logger.error(f"[ErrorRouter] Error routing to Devin: {e}")
+            logger.error(f'[ErrorRouter] Error routing to Devin: {e}')
             return RoutingResult(
                 success=False,
                 error=str(e),
@@ -316,7 +315,7 @@ class ErrorRouterService:
             else:
                 return loop.run_until_complete(self.route_error(error))
         except Exception as e:
-            logger.error(f"[ErrorRouter] Error in sync wrapper: {e}")
+            logger.error(f'[ErrorRouter] Error in sync wrapper: {e}')
             return RoutingResult(success=False, error=str(e))
 
     def update_config(self, config: ErrorRouterConfig) -> None:
@@ -327,10 +326,10 @@ class ErrorRouterService:
         """
         self._config = config
         logger.info(
-            f"[ErrorRouter] Configuration updated: "
-            f"enable_devin={self._config.enable_devin}, "
-            f"min_severity={self._config.min_severity}, "
-            f"enable_ai_analysis={self._config.enable_ai_analysis}"
+            f'[ErrorRouter] Configuration updated: '
+            f'enable_devin={self._config.enable_devin}, '
+            f'min_severity={self._config.min_severity}, '
+            f'enable_ai_analysis={self._config.enable_ai_analysis}'
         )
 
     def get_config(self) -> ErrorRouterConfig:
@@ -340,9 +339,9 @@ class ErrorRouterService:
     def get_routing_stats(self) -> dict[str, Any]:
         """Get routing statistics."""
         return {
-            "devin_enabled": self._config.enable_devin,
-            "min_severity": self._config.min_severity,
-            "ai_analysis_enabled": self._config.enable_ai_analysis,
+            'devin_enabled': self._config.enable_devin,
+            'min_severity': self._config.min_severity,
+            'ai_analysis_enabled': self._config.enable_ai_analysis,
         }
 
 
@@ -352,8 +351,8 @@ error_router = ErrorRouterService()
 
 def route_error_to_devin(
     error: Exception,
-    category: str = "runtime_error",
-    event: str = "exception",
+    category: str = 'runtime_error',
+    event: str = 'exception',
     context: Optional[dict[str, Any]] = None,
     source_repo: Optional[str] = None,
 ) -> RoutingResult:
@@ -388,7 +387,7 @@ def route_error_to_devin(
     tb = traceback.extract_tb(error.__traceback__)
     if tb:
         last_frame = tb[-1]
-        code_location = f"{last_frame.filename}:{last_frame.lineno}"
+        code_location = f'{last_frame.filename}:{last_frame.lineno}'
 
     error_report = ErrorReport(
         category=category,
@@ -397,7 +396,7 @@ def route_error_to_devin(
         stack_trace=traceback.format_exc(),
         code_location=code_location,
         context=context,
-        severity="ERROR",
+        severity='ERROR',
         source_repo=source_repo,
     )
 
