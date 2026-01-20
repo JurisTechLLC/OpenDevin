@@ -31,7 +31,7 @@ from openhands.core.logger import openhands_logger as logger
 from openhands.integrations.devin_integration import devin_integration
 
 # Default repository for OpenHands
-DEFAULT_REPO = "JurisTechLLC/OpenDevin"
+DEFAULT_REPO = 'JurisTechLLC/OpenDevin'
 
 
 @dataclass
@@ -44,7 +44,7 @@ class ErrorToAnalyze:
     stack_trace: Optional[str] = None
     code_location: Optional[str] = None
     context: Optional[dict[str, Any]] = None
-    severity: str = "ERROR"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    severity: str = 'ERROR'  # DEBUG, INFO, WARNING, ERROR, CRITICAL
     source_repo: Optional[str] = None
 
 
@@ -52,7 +52,7 @@ class ErrorToAnalyze:
 class ActiveWork:
     """Represents active work item (Devin session or open PR)."""
 
-    type: Literal["devin_session", "open_pr"]
+    type: Literal['devin_session', 'open_pr']
     id: str
     title: str
     description: str
@@ -71,11 +71,11 @@ class RootCauseAnalysis:
     )
     severity: str  # DEBUG, INFO, WARNING, ERROR, CRITICAL
     affected_components: list[str] = field(default_factory=list)
-    suggested_action: str = ""
+    suggested_action: str = ''
     is_duplicate_of_active_work: bool = False
     matching_active_work: Optional[ActiveWork] = None
     confidence: float = 0.5
-    reasoning: str = ""
+    reasoning: str = ''
 
 
 # System prompt for the IT Manager AI that analyzes errors
@@ -115,11 +115,11 @@ class IntelligentErrorAnalyzerService:
     """
 
     def __init__(self):
-        self._github_token = os.getenv("GITHUB_TOKEN")
+        self._github_token = os.getenv('GITHUB_TOKEN')
 
     def _get_anthropic_api_key(self) -> Optional[str]:
         """Get the Anthropic API key from environment variables."""
-        return os.getenv("ANTHROPIC_API_KEY")
+        return os.getenv('ANTHROPIC_API_KEY')
 
     async def _get_active_devin_sessions(self) -> list[ActiveWork]:
         """Fetch active Devin sessions that are currently being worked on.
@@ -132,11 +132,11 @@ class IntelligentErrorAnalyzerService:
         for error_hash, session_id in devin_integration._active_sessions.items():
             active_work.append(
                 ActiveWork(
-                    type="devin_session",
+                    type='devin_session',
                     id=session_id,
-                    title=f"Devin session {session_id}",
-                    description=f"Active session for error hash {error_hash[:16]}...",
-                    url=f"https://app.devin.ai/sessions/{session_id}",
+                    title=f'Devin session {session_id}',
+                    description=f'Active session for error hash {error_hash[:16]}...',
+                    url=f'https://app.devin.ai/sessions/{session_id}',
                     created_at=datetime.now(),
                 )
             )
@@ -150,15 +150,15 @@ class IntelligentErrorAnalyzerService:
         """
         if not self._github_token:
             logger.warning(
-                "[IntelligentErrorAnalyzer] GitHub token not configured, skipping PR check"
+                '[IntelligentErrorAnalyzer] GitHub token not configured, skipping PR check'
             )
             return []
 
         try:
-            parts = repo.split("/")
+            parts = repo.split('/')
             if len(parts) != 2:
                 logger.warning(
-                    "[IntelligentErrorAnalyzer] Invalid repo format, expected owner/repo"
+                    '[IntelligentErrorAnalyzer] Invalid repo format, expected owner/repo'
                 )
                 return []
 
@@ -166,42 +166,42 @@ class IntelligentErrorAnalyzerService:
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
-                    f"https://api.github.com/repos/{owner}/{repo_name}/pulls",
+                    f'https://api.github.com/repos/{owner}/{repo_name}/pulls',
                     headers={
-                        "Authorization": f"token {self._github_token}",
-                        "Accept": "application/vnd.github.v3+json",
+                        'Authorization': f'token {self._github_token}',
+                        'Accept': 'application/vnd.github.v3+json',
                     },
                     params={
-                        "state": "open",
-                        "sort": "created",
-                        "direction": "desc",
-                        "per_page": 50,
+                        'state': 'open',
+                        'sort': 'created',
+                        'direction': 'desc',
+                        'per_page': 50,
                     },
                 )
 
                 if response.status_code != 200:
                     logger.error(
-                        f"[IntelligentErrorAnalyzer] GitHub API error: {response.status_code}"
+                        f'[IntelligentErrorAnalyzer] GitHub API error: {response.status_code}'
                     )
                     return []
 
                 prs = response.json()
                 return [
                     ActiveWork(
-                        type="open_pr",
-                        id=str(pr["number"]),
-                        title=pr["title"],
-                        description=pr.get("body") or "",
-                        url=pr["html_url"],
+                        type='open_pr',
+                        id=str(pr['number']),
+                        title=pr['title'],
+                        description=pr.get('body') or '',
+                        url=pr['html_url'],
                         created_at=datetime.fromisoformat(
-                            pr["created_at"].replace("Z", "+00:00")
+                            pr['created_at'].replace('Z', '+00:00')
                         ),
                     )
                     for pr in prs
                 ]
 
         except Exception as e:
-            logger.error(f"[IntelligentErrorAnalyzer] Failed to fetch open PRs: {e}")
+            logger.error(f'[IntelligentErrorAnalyzer] Failed to fetch open PRs: {e}')
             return []
 
     def _format_error_for_analysis(self, error: ErrorToAnalyze) -> str:
@@ -212,62 +212,80 @@ Message: {error.message}
 Severity: {error.severity}"""
 
         if error.code_location:
-            formatted += f"\nCode Location: {error.code_location}"
+            formatted += f'\nCode Location: {error.code_location}'
 
         if error.stack_trace:
-            formatted += f"\nStack Trace:\n{error.stack_trace}"
+            formatted += f'\nStack Trace:\n{error.stack_trace}'
 
         if error.context:
-            formatted += f"\nContext: {json.dumps(error.context, indent=2)}"
+            formatted += f'\nContext: {json.dumps(error.context, indent=2)}'
 
         return formatted
 
     def _format_active_work_for_analysis(self, active_work: list[ActiveWork]) -> str:
         """Format active work items for AI analysis."""
         if not active_work:
-            return ""
+            return ''
 
         formatted_items = []
         for i, work in enumerate(active_work):
-            item = f"""[{i + 1}] {"Devin Session" if work.type == "devin_session" else "Open PR"}
+            item = f"""[{i + 1}] {'Devin Session' if work.type == 'devin_session' else 'Open PR'}
 ID: {work.id}
 Title: {work.title}
-Description: {work.description[:500]}{"..." if len(work.description) > 500 else ""}"""
+Description: {work.description[:500]}{'...' if len(work.description) > 500 else ''}"""
             if work.created_at:
-                item += f"\nCreated: {work.created_at.isoformat()}"
+                item += f'\nCreated: {work.created_at.isoformat()}'
             formatted_items.append(item)
 
-        return "\n\n".join(formatted_items)
+        return '\n\n'.join(formatted_items)
 
     def _validate_category(
         self, category: str
     ) -> Literal[
-        "SECURITY",
-        "FUNCTIONAL",
-        "DATA_INTEGRITY",
-        "USER_EXPERIENCE",
-        "PERFORMANCE",
-        "OTHER",
+        'SECURITY',
+        'FUNCTIONAL',
+        'DATA_INTEGRITY',
+        'USER_EXPERIENCE',
+        'PERFORMANCE',
+        'OTHER',
     ]:
         """Validate and normalize category."""
-        valid_categories = [
-            "SECURITY",
-            "FUNCTIONAL",
-            "DATA_INTEGRITY",
-            "USER_EXPERIENCE",
-            "PERFORMANCE",
-            "OTHER",
-        ]
-        normalized = category.upper() if category else "OTHER"
-        return normalized if normalized in valid_categories else "OTHER"
+        valid_categories: dict[
+            str,
+            Literal[
+                'SECURITY',
+                'FUNCTIONAL',
+                'DATA_INTEGRITY',
+                'USER_EXPERIENCE',
+                'PERFORMANCE',
+                'OTHER',
+            ],
+        ] = {
+            'SECURITY': 'SECURITY',
+            'FUNCTIONAL': 'FUNCTIONAL',
+            'DATA_INTEGRITY': 'DATA_INTEGRITY',
+            'USER_EXPERIENCE': 'USER_EXPERIENCE',
+            'PERFORMANCE': 'PERFORMANCE',
+            'OTHER': 'OTHER',
+        }
+        normalized = category.upper() if category else 'OTHER'
+        return valid_categories.get(normalized, 'OTHER')
 
     def _validate_severity(
         self, severity: str
-    ) -> Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
+    ) -> Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
         """Validate and normalize severity."""
-        valid_severities = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-        normalized = severity.upper() if severity else "ERROR"
-        return normalized if normalized in valid_severities else "ERROR"
+        valid_severities: dict[
+            str, Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+        ] = {
+            'DEBUG': 'DEBUG',
+            'INFO': 'INFO',
+            'WARNING': 'WARNING',
+            'ERROR': 'ERROR',
+            'CRITICAL': 'CRITICAL',
+        }
+        normalized = severity.upper() if severity else 'ERROR'
+        return valid_severities.get(normalized, 'ERROR')
 
     def _parse_analysis_response(
         self, response_text: str, active_work: list[ActiveWork]
@@ -276,7 +294,7 @@ Description: {work.description[:500]}{"..." if len(work.description) > 500 else 
         try:
             # Extract JSON from the response (handle markdown code blocks)
             json_text = response_text
-            json_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", response_text)
+            json_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', response_text)
             if json_match:
                 json_text = json_match.group(1).strip()
 
@@ -284,42 +302,42 @@ Description: {work.description[:500]}{"..." if len(work.description) > 500 else 
 
             # Find matching active work if specified
             matching_active_work: Optional[ActiveWork] = None
-            if parsed.get("matchingActiveWorkId") and parsed.get(
-                "isDuplicateOfActiveWork"
+            if parsed.get('matchingActiveWorkId') and parsed.get(
+                'isDuplicateOfActiveWork'
             ):
                 matching_active_work = next(
-                    (w for w in active_work if w.id == parsed["matchingActiveWorkId"]),
+                    (w for w in active_work if w.id == parsed['matchingActiveWorkId']),
                     None,
                 )
 
             return RootCauseAnalysis(
-                root_cause=parsed.get("rootCause", "Unknown root cause"),
-                category=self._validate_category(parsed.get("category", "OTHER")),
-                severity=self._validate_severity(parsed.get("severity", "ERROR")),
-                affected_components=parsed.get("affectedComponents", [])
-                if isinstance(parsed.get("affectedComponents"), list)
+                root_cause=parsed.get('rootCause', 'Unknown root cause'),
+                category=self._validate_category(parsed.get('category', 'OTHER')),
+                severity=self._validate_severity(parsed.get('severity', 'ERROR')),
+                affected_components=parsed.get('affectedComponents', [])
+                if isinstance(parsed.get('affectedComponents'), list)
                 else [],
                 suggested_action=parsed.get(
-                    "suggestedAction", "Manual review required"
+                    'suggestedAction', 'Manual review required'
                 ),
-                is_duplicate_of_active_work=bool(parsed.get("isDuplicateOfActiveWork")),
+                is_duplicate_of_active_work=bool(parsed.get('isDuplicateOfActiveWork')),
                 matching_active_work=matching_active_work,
-                confidence=float(parsed.get("confidence", 0.5))
-                if isinstance(parsed.get("confidence"), (int, float))
+                confidence=float(parsed.get('confidence', 0.5))
+                if isinstance(parsed.get('confidence'), (int, float))
                 else 0.5,
-                reasoning=parsed.get("reasoning", "No reasoning provided"),
+                reasoning=parsed.get('reasoning', 'No reasoning provided'),
             )
 
         except Exception as e:
-            logger.error(f"[IntelligentErrorAnalyzer] Failed to parse AI response: {e}")
+            logger.error(f'[IntelligentErrorAnalyzer] Failed to parse AI response: {e}')
             return RootCauseAnalysis(
-                root_cause="Failed to parse AI analysis",
-                category="OTHER",
-                severity="ERROR",
-                suggested_action="Manual review required",
+                root_cause='Failed to parse AI analysis',
+                category='OTHER',
+                severity='ERROR',
+                suggested_action='Manual review required',
                 is_duplicate_of_active_work=False,
                 confidence=0,
-                reasoning=f"Parse error: {e}",
+                reasoning=f'Parse error: {e}',
             )
 
     async def analyze_error(self, error: ErrorToAnalyze) -> RootCauseAnalysis:
@@ -334,17 +352,17 @@ Description: {work.description[:500]}{"..." if len(work.description) > 500 else 
         api_key = self._get_anthropic_api_key()
         if not api_key:
             logger.warning(
-                "[IntelligentErrorAnalyzer] No Anthropic API key configured, "
-                "defaulting to allow error reporting"
+                '[IntelligentErrorAnalyzer] No Anthropic API key configured, '
+                'defaulting to allow error reporting'
             )
             return RootCauseAnalysis(
-                root_cause="API key not configured",
-                category="OTHER",
-                severity="ERROR",
-                suggested_action="Manual review required",
+                root_cause='API key not configured',
+                category='OTHER',
+                severity='ERROR',
+                suggested_action='Manual review required',
                 is_duplicate_of_active_work=False,
                 confidence=0,
-                reasoning="Anthropic API key not configured, defaulting to allow error reporting",
+                reasoning='Anthropic API key not configured, defaulting to allow error reporting',
             )
 
         # Fetch all active work
@@ -355,19 +373,22 @@ Description: {work.description[:500]}{"..." if len(work.description) > 500 else 
             return_exceptions=True,
         )
 
-        # Handle exceptions from gather
+        # Handle exceptions from gather and build combined list
+        all_active_work: list[ActiveWork] = []
+
         if isinstance(active_sessions, Exception):
             logger.error(
-                f"[IntelligentErrorAnalyzer] Failed to fetch active sessions: {active_sessions}"
+                f'[IntelligentErrorAnalyzer] Failed to fetch active sessions: {active_sessions}'
             )
-            active_sessions = []
+        elif isinstance(active_sessions, list):
+            all_active_work.extend(active_sessions)
+
         if isinstance(open_prs, Exception):
             logger.error(
-                f"[IntelligentErrorAnalyzer] Failed to fetch open PRs: {open_prs}"
+                f'[IntelligentErrorAnalyzer] Failed to fetch open PRs: {open_prs}'
             )
-            open_prs = []
-
-        all_active_work = list(active_sessions) + list(open_prs)
+        elif isinstance(open_prs, list):
+            all_active_work.extend(open_prs)
 
         # Build the prompt for AI analysis
         error_description = self._format_error_for_analysis(error)
@@ -379,47 +400,47 @@ Description: {work.description[:500]}{"..." if len(work.description) > 500 else 
 {error_description}
 
 **CURRENTLY ACTIVE WORK (Devin sessions and open PRs):**
-{active_work_description or "No active work items found."}
+{active_work_description or 'No active work items found.'}
 
 Analyze the error's root cause and determine if it's already being addressed by any active work item. Output your analysis as JSON."""
 
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
-                    "https://api.anthropic.com/v1/messages",
+                    'https://api.anthropic.com/v1/messages',
                     headers={
-                        "Content-Type": "application/json",
-                        "x-api-key": api_key,
-                        "anthropic-version": "2023-06-01",
+                        'Content-Type': 'application/json',
+                        'x-api-key': api_key,
+                        'anthropic-version': '2023-06-01',
                     },
                     json={
-                        "model": "claude-3-5-haiku-latest",
-                        "max_tokens": 2048,
-                        "system": ROOT_CAUSE_ANALYSIS_PROMPT,
-                        "messages": [{"role": "user", "content": user_prompt}],
+                        'model': 'claude-3-5-haiku-latest',
+                        'max_tokens': 2048,
+                        'system': ROOT_CAUSE_ANALYSIS_PROMPT,
+                        'messages': [{'role': 'user', 'content': user_prompt}],
                     },
                 )
 
                 if response.status_code != 200:
-                    raise Exception(f"AI analysis failed: {response.status_code}")
+                    raise Exception(f'AI analysis failed: {response.status_code}')
 
                 data = response.json()
-                analysis_text = data.get("content", [{}])[0].get("text", "{}")
+                analysis_text = data.get('content', [{}])[0].get('text', '{}')
 
                 # Parse the AI response
                 return self._parse_analysis_response(analysis_text, all_active_work)
 
         except Exception as e:
-            logger.error(f"[IntelligentErrorAnalyzer] AI analysis failed: {e}")
+            logger.error(f'[IntelligentErrorAnalyzer] AI analysis failed: {e}')
             # Return a default analysis that allows the error to be reported
             return RootCauseAnalysis(
-                root_cause=f"Analysis failed: {e}",
-                category="OTHER",
-                severity="ERROR",
-                suggested_action="Manual review required",
+                root_cause=f'Analysis failed: {e}',
+                category='OTHER',
+                severity='ERROR',
+                suggested_action='Manual review required',
                 is_duplicate_of_active_work=False,
                 confidence=0,
-                reasoning="AI analysis failed, defaulting to allow error reporting",
+                reasoning='AI analysis failed, defaulting to allow error reporting',
             )
 
     async def should_send_for_repair(
@@ -436,16 +457,16 @@ Analyze the error's root cause and determine if it's already being addressed by 
 
         if analysis.is_duplicate_of_active_work:
             logger.info(
-                f"[IntelligentErrorAnalyzer] Error identified as duplicate of active work: "
-                f"{analysis.matching_active_work.title if analysis.matching_active_work else 'Unknown'}"
+                f'[IntelligentErrorAnalyzer] Error identified as duplicate of active work: '
+                f'{analysis.matching_active_work.title if analysis.matching_active_work else "Unknown"}'
             )
-            logger.info(f"[IntelligentErrorAnalyzer] Reasoning: {analysis.reasoning}")
+            logger.info(f'[IntelligentErrorAnalyzer] Reasoning: {analysis.reasoning}')
             return False, analysis
 
         logger.info(
-            "[IntelligentErrorAnalyzer] Error is NOT a duplicate, should be sent for repair"
+            '[IntelligentErrorAnalyzer] Error is NOT a duplicate, should be sent for repair'
         )
-        logger.info(f"[IntelligentErrorAnalyzer] Root cause: {analysis.root_cause}")
+        logger.info(f'[IntelligentErrorAnalyzer] Root cause: {analysis.root_cause}')
         return True, analysis
 
 
