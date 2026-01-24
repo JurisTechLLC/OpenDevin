@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=OpenHands
+Comment=JurisTech OpenHands AI Development Assistant
+Exec=/home/ubuntu/repos/OpenDevin/juristech-ext/scripts/start-openhands.sh
+Icon=utilities-terminal
+Terminal=true
+Categories=Development;
+StartupNotify=true
