@@ -126,18 +126,20 @@ if ! curl -s http://127.0.0.1:3002/extension/health > /dev/null 2>&1; then
     exit 1
 fi
 
-# Open browser to wrapper UI
+# Open browser to OpenHands UI directly (wrapper handles extension API only)
 echo -e "${GREEN}Opening browser...${NC}"
-xdg-open "http://127.0.0.1:3002" 2>/dev/null &
+xdg-open "http://127.0.0.1:3001" 2>/dev/null &
 
 echo ""
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}  JurisTech OpenHands UI is running!${NC}"
+echo -e "${GREEN}  JurisTech OpenHands is running!${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
-echo -e "  ${BLUE}Custom UI:${NC}     http://127.0.0.1:3002"
-echo -e "  ${BLUE}OpenHands:${NC}     http://127.0.0.1:3001 (background)"
+echo -e "  ${BLUE}OpenHands UI:${NC}  http://127.0.0.1:3001"
 echo -e "  ${BLUE}Extension API:${NC} http://127.0.0.1:3002/extension/"
+echo ""
+echo -e "  ${YELLOW}Note: Extension features (Supervisor AI, RAG, Vision)${NC}"
+echo -e "  ${YELLOW}are available via the Extension API on port 3002${NC}"
 echo ""
 echo -e "${YELLOW}Press Ctrl+C to stop all services${NC}"
 echo ""
