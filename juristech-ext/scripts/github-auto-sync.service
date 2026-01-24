@@ -1,0 +1,20 @@
+[Unit]
+Description=JurisTech GitHub Auto-Sync Service
+Documentation=https://github.com/JurisTechLLC/OpenDevin
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=%h
+ExecStart=/usr/bin/python3 %h/repos/OpenDevin/juristech-ext/scripts/github-auto-sync.py --interval 300
+Restart=always
+RestartSec=30
+StandardOutput=append:%h/.juristech-openhands/auto-sync.log
+StandardError=append:%h/.juristech-openhands/auto-sync-error.log
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
