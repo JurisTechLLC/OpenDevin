@@ -1,0 +1,103 @@
+# JurisTech OpenHands Extension - Devin.ai Development Sandbox
+# A pre-configured container for Devin.ai agents to use for development
+
+FROM ubuntu:22.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install essential development tools
+RUN apt-get update && apt-get install -y \
+    # Basic utilities
+    curl \
+    wget \
+    git \
+    vim \
+    nano \
+    htop \
+    tree \
+    jq \
+    unzip \
+    zip \
+    # SSH server
+    openssh-server \
+    # Build essentials
+    build-essential \
+    gcc \
+    g++ \
+    make \
+    cmake \
+    # Python
+    python3 \
+    python3-pip \
+    python3-venv \
+    # Node.js prerequisites
+    ca-certificates \
+    gnupg \
+    # Network tools
+    net-tools \
+    iputils-ping \
+    dnsutils \
+    # Process management
+    supervisor \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 20.x
+RUN mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
+    apt-get update && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install global npm packages
+RUN npm install -g \
+    typescript \
+    ts-node \
+    pnpm \
+    yarn
+
+# Install Python packages
+RUN pip3 install --no-cache-dir \
+    poetry \
+    pipenv \
+    black \
+    flake8 \
+    mypy \
+    pytest \
+    httpx \
+    fastapi \
+    uvicorn
+
+# Configure SSH
+RUN mkdir /var/run/sshd && \
+    echo 'root:devin' | chpasswd && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+# Create workspace directory
+RUN mkdir -p /workspace && chmod 777 /workspace
+
+# Create a non-root user for development
+RUN useradd -m -s /bin/bash devin && \
+    echo 'devin:devin' | chpasswd && \
+    usermod -aG sudo devin
+
+# Set up supervisor configuration
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Expose ports
+# 22: SSH
+# 3000-3010: Development servers
+# 8000-8010: API servers
+EXPOSE 22 3000 3001 3002 3003 3004 3005 3006 3007 3008 3009 3010 8000 8001 8002 8003 8004 8005 8006 8007 8008 8009 8010
+
+# Set working directory
+WORKDIR /workspace
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:22 || exit 1
+
+# Start supervisor
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
