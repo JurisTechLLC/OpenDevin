@@ -175,8 +175,14 @@ async def proxy_request(request: Request, path: str) -> Response:
     # Forward headers (excluding host and connection-related headers)
     headers = {}
     for key, value in request.headers.items():
-        if key.lower() not in {'host', 'connection', 'keep-alive', 'transfer-encoding'}:
-            headers[key] = value
+        key_lower = key.lower()
+        if key_lower not in {'host', 'connection', 'keep-alive', 'transfer-encoding', 'content-length'}:
+            # Sanitize header values - remove any non-ASCII characters
+            try:
+                value.encode('latin-1')
+                headers[key] = value
+            except UnicodeEncodeError:
+                logger.warning(f"Skipping header {key} with non-ASCII value")
 
     try:
         response = await http_client.request(
@@ -187,18 +193,33 @@ async def proxy_request(request: Request, path: str) -> Response:
             params=request.query_params
         )
 
-        # Filter response headers - only forward safe headers
+        # Filter response headers - only forward safe headers with valid values
         response_headers = {}
         for key, value in response.headers.items():
-            if key.lower() not in EXCLUDED_RESPONSE_HEADERS:
-                response_headers[key] = value
+            key_lower = key.lower()
+            if key_lower not in EXCLUDED_RESPONSE_HEADERS:
+                # Sanitize header values - ensure they're valid HTTP header values
+                try:
+                    value.encode('latin-1')
+                    response_headers[key] = value
+                except (UnicodeEncodeError, UnicodeDecodeError):
+                    logger.warning(f"Skipping response header {key} with invalid value")
+
+        # Get content-type, defaulting to application/octet-stream
+        content_type = response.headers.get("content-type", "application/octet-stream")
+        # Extract just the media type without parameters if it causes issues
+        if content_type:
+            try:
+                content_type.encode('latin-1')
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                content_type = "application/octet-stream"
 
         # Return the response
         return Response(
             content=response.content,
             status_code=response.status_code,
             headers=response_headers,
-            media_type=response.headers.get("content-type")
+            media_type=content_type
         )
     except httpx.RequestError as e:
         logger.error(f"Proxy error: {e}")
