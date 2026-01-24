@@ -21,6 +21,13 @@ from .supervisor_config import (
 )
 from .rag_manager import RAGManager, get_rag_manager
 
+# Optional import for GitHub RAG integration
+try:
+    from .github_rag_integration import get_github_rag_integration, GitHubRAGIntegration
+    HAS_GITHUB_RAG = True
+except ImportError:
+    HAS_GITHUB_RAG = False
+
 
 @dataclass
 class SupervisorResponse:
@@ -97,13 +104,32 @@ class SupervisorManager:
             json.dump(self.config.to_dict(), f, indent=2)
     
     def _get_rag_manager(self) -> RAGManager:
-        """Get or create RAG manager."""
+        """
+        Get or create RAG manager.
+        
+        If GitHub RAG integration is available, uses the shared RAG manager
+        that is automatically synced with the selected GitHub repository.
+        Otherwise, falls back to the standalone RAG manager.
+        """
         if self._rag_manager is None:
-            self._rag_manager = get_rag_manager(
-                index_path=self.config.rag_index_path,
-                chunk_size=self.config.rag_chunk_size,
-                chunk_overlap=self.config.rag_chunk_overlap
-            )
+            # Try to use the shared GitHub RAG integration if available
+            if HAS_GITHUB_RAG:
+                try:
+                    github_rag = get_github_rag_integration()
+                    self._rag_manager = github_rag.get_rag_manager()
+                except Exception:
+                    # Fall back to standalone RAG manager
+                    self._rag_manager = get_rag_manager(
+                        index_path=self.config.rag_index_path,
+                        chunk_size=self.config.rag_chunk_size,
+                        chunk_overlap=self.config.rag_chunk_overlap
+                    )
+            else:
+                self._rag_manager = get_rag_manager(
+                    index_path=self.config.rag_index_path,
+                    chunk_size=self.config.rag_chunk_size,
+                    chunk_overlap=self.config.rag_chunk_overlap
+                )
         return self._rag_manager
     
     async def _get_http_client(self) -> httpx.AsyncClient:
