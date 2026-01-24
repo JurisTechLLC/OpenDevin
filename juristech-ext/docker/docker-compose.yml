@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  devin-sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile.devin-sandbox
+    container_name: juristech-devin-sandbox
+    hostname: devin-sandbox
+    ports:
+      - "2222:22"      # SSH
+      - "3000:3000"    # Dev server 1
+      - "3001:3001"    # Dev server 2
+      - "3002:3002"    # Dev server 3
+      - "8000:8000"    # API server 1
+      - "8001:8001"    # API server 2
+      - "8080:8080"    # Alternative HTTP
+    volumes:
+      - devin-workspace:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock  # Allow Docker-in-Docker
+    environment:
+      - TZ=America/Chicago
+    restart: unless-stopped
+    networks:
+      - devin-network
+
+networks:
+  devin-network:
+    driver: bridge
+
+volumes:
+  devin-workspace:
+    driver: local
