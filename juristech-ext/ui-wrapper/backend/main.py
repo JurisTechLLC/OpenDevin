@@ -266,20 +266,26 @@ async def websocket_proxy(websocket: WebSocket, path: str):
         await websocket.close()
 
 
-# ============== Static File Proxy ==============
+# ============== Root Redirect ==============
 
-@app.get("/{path:path}")
-async def proxy_static(request: Request, path: str):
-    """Proxy static files and other requests to OpenHands"""
-    if path.startswith("extension/"):
-        raise HTTPException(status_code=404, detail="Not found")
-    return await proxy_request(request, path)
-
+from fastapi.responses import RedirectResponse
 
 @app.get("/")
-async def proxy_root(request: Request):
-    """Proxy root request to OpenHands"""
-    return await proxy_request(request, "")
+async def redirect_to_openhands():
+    """Redirect to OpenHands frontend - the wrapper handles API/extension endpoints only"""
+    return RedirectResponse(url=OPENHANDS_URL, status_code=302)
+
+
+@app.get("/{path:path}")
+async def proxy_or_redirect(request: Request, path: str):
+    """Handle other paths - redirect static files to OpenHands, proxy API calls"""
+    if path.startswith("extension/"):
+        raise HTTPException(status_code=404, detail="Not found")
+    # For API paths, proxy them
+    if path.startswith("api/") or path.startswith("feedback/") or path.startswith("oauth/"):
+        return await proxy_request(request, path)
+    # For static files, redirect to OpenHands
+    return RedirectResponse(url=f"{OPENHANDS_URL}/{path}", status_code=302)
 
 
 if __name__ == "__main__":
