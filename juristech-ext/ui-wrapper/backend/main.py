@@ -148,19 +148,36 @@ async def extension_health():
 
 # ============== Proxy Endpoints ==============
 
+# Headers that should not be forwarded from upstream response
+EXCLUDED_RESPONSE_HEADERS = {
+    'transfer-encoding',
+    'content-encoding',
+    'content-length',
+    'connection',
+    'keep-alive',
+    'proxy-authenticate',
+    'proxy-authorization',
+    'te',
+    'trailers',
+    'upgrade',
+}
+
+
 async def proxy_request(request: Request, path: str) -> Response:
     """Proxy a request to OpenHands backend"""
     url = f"{OPENHANDS_URL}/{path}"
-    
+
     # Get request body if present
     body = None
     if request.method in ["POST", "PUT", "PATCH"]:
         body = await request.body()
-    
-    # Forward headers (excluding host)
-    headers = dict(request.headers)
-    headers.pop("host", None)
-    
+
+    # Forward headers (excluding host and connection-related headers)
+    headers = {}
+    for key, value in request.headers.items():
+        if key.lower() not in {'host', 'connection', 'keep-alive', 'transfer-encoding'}:
+            headers[key] = value
+
     try:
         response = await http_client.request(
             method=request.method,
@@ -169,12 +186,18 @@ async def proxy_request(request: Request, path: str) -> Response:
             content=body,
             params=request.query_params
         )
-        
+
+        # Filter response headers - only forward safe headers
+        response_headers = {}
+        for key, value in response.headers.items():
+            if key.lower() not in EXCLUDED_RESPONSE_HEADERS:
+                response_headers[key] = value
+
         # Return the response
         return Response(
             content=response.content,
             status_code=response.status_code,
-            headers=dict(response.headers),
+            headers=response_headers,
             media_type=response.headers.get("content-type")
         )
     except httpx.RequestError as e:
