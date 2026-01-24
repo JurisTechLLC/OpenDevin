@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=JurisTech OpenHands
+Comment=JurisTech OpenHands UI with Extension Features
+Exec=konsole -e bash -c "/home/aiserver/repos/OpenDevin/juristech-ext/ui-wrapper/start-juristech-ui.sh; exec bash"
+Icon=utilities-terminal
+Terminal=false
+Categories=Development;
+StartupNotify=true
